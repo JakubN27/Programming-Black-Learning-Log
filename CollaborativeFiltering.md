@@ -1,19 +1,62 @@
-Collecting user's taste information. Disregards information on content and relies entirely on users taste in music. For example, if 2 users have similar tastes in music, they are more likely to have a more similar opinion on a song neither one of them has heard before.
+### Week 1 – Research
 
-Users' opinions can be represented with a matrix structure known as a user-item matrix, with users u1, u2, u3 and their opinions on 'items' (songs in this case), 1-8, ranked from 1-5 with blanks beings no opinion or haven't heard it before. This matrix can be factorised to extract similarities in user's opinions, to then know which user's tastes to use for recommendation.
+Collaborative filtering is a recommendation technique that relies entirely on user behaviour—specifically, their taste preferences—rather than on the content of the items themselves. The core assumption behind collaborative filtering is: **if two users have similar preferences, they are likely to rate or enjoy new items in a similar way**.
 
-|     | 1   | 2   | 3   | 4   | 5   | 6   | 7   | 8   |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| u₁  | 5   |     | 1   | 4   |     |     | 2   | 1   |
-| u₂  | 5   |     | 3   | 2   | 5   |     | 2   |     |
-| u₃  | 1   | 4   | 2   | 5   | 2   |     |     | 5   |
-An algorithm for finding an appropriate factorisation of such a matrix is SVD (single-value decomposition). This breaks the matrix down into two matrices with lower rank, for user features. and for item features. Missing values are naively approximated as a product of the decomposition (**U** **V$^T}$**)]
+To represent user preferences, we typically use a **user-item matrix**. Each row represents a user, each column an item (in this case, a song), and each cell contains a value (e.g., 1–5) representing how much a user likes a particular item. Empty cells indicate unknown preferences, such as when a user hasn't listened to a song yet.
 
-Similarities in the user's tastes can be calculated using cosine similarity, which can be computed with the formula : ${Sim}(u_i, u_j) = \frac{u_i \cdot u_j}{\|u_i\| \|u_j\|} = \cos(\theta)$
-Using the coefficient obtained through the cosine similarity, instead of just taking a naïve approach through averaging the other user's tastes, it can now be weighted (weighted inner product) based on each user's similarity to the user we are trying to recommend to. 
+For example:
 
-The main limitation of this model is sparsity, as the example was just a small table it had a few gaps, but in reality, there are so many users and so many items to choose from the a vast majority of a dataset will be blank and this needs to be accounted for to produce a more appropriate sample to work with.
+| |1|2|3|4|5|6|7|8|
+|---|---|---|---|---|---|---|---|---|
+|u₁|5||1|4|||2|1|
+|u₂|5||3|2|5||2||
+|u₃|1|4|2|5|2|||5|
 
+To uncover patterns in this matrix, we can apply **matrix factorization**, which helps us identify hidden relationships between users and items. One such method is **Singular Value Decomposition (SVD)**. SVD factorizes the original matrix into three smaller matrices:
+
+- `U` – user latent factor matrix
+    
+- `Σ` – diagonal matrix of singular values
+    
+- `Vᵀ` – item latent factor matrix
+    
+
+This decomposition reveals **latent features** that capture user tastes and item characteristics, and is particularly effective for **explicit rating data** (e.g., 1 to 5 stars).
+
+To identify similar users, we can calculate **cosine similarity** between their interaction vectors. This is computed as:
+
+Rather than simply averaging ratings from similar users, we can apply a **weighted approach** using these similarity scores, which makes predictions more personalized and accurate.
+
+However, a significant limitation of this model is **sparsity**. In real-world datasets, there are typically **millions of users and items**, meaning the user-item matrix is overwhelmingly empty. Most users interact with only a small subset of items, which makes reliable similarity computations and factorization challenging.
+
+An alternative to SVD for such sparse and **implicit feedback** data (e.g., liked vs. unliked songs) is **Alternating Least Squares (ALS)**. ALS factorizes the interaction matrix into two lower-dimensional matrices:
+
+- `X` – user matrix
+    
+- `Y` – item matrix
+    
+
+ALS alternates between fixing `Y` and solving for `X`, then fixing `X` and solving for `Y`, using **least squares optimization**. It's especially suited for binary interaction data, and can incorporate a **confidence score** to reflect the strength of a user’s interaction with an item.
+
+
+
+
+## Week 2  - Preparing Data
 Python libraries appropriate for implementing these systems are surprise and sci-kit. Surprise is designed specifically for recommendation systems, having these decompositions and cosine similarity built in as feature. Sci-kit has built is KNN methods but is not directly focused on recommendation system, but more general machine learning tasks.
 
 I first attempted to create a user-item matrix out of the user listening dataset provided by Lucy using pandas db and create a user item matrix, however the dataset contained over a million users and items, and creating a user-item matrix out of those would mean over a trillion binary fields, which wouldn't be reasonable to compute efficiently. A fix to the sparsity issue is a tool i looked at previously, scipy. Scipy can be used to store data in sparse matrices, which store the indices of non zero elements and everything else is defaulted to 0, which is perfect for the sparse binary data i am using and massively improved efficiency. With the previous method it took 10 minutes to generate about 3000 rows of data, while with sparse matrices the whole data is processed into the matrix in just a few seconds. Now I have a complete user-item matrix with 1s for liked songs by users and 0 for unknown, which we will attempt to predict using machine learning.
+## User-Item Matrix Example
+
+| User  | Song A | Song B | Song C | Song D |
+|-------|--------|--------|--------|--------|
+| User 1 | 1      | 0      | 1      | 0      |
+| User 2 | 0      | 1      | 0      | 1      |
+| User 3 | 1      | 1      | 0      | 0      |
+| User 4 | 0      | 0      | 1      | 1      |
+Where user 1 has likes songs A and C, and not yet interacted/ not liked Song B and D etc.
+
+## Week 3-4 - Developing Collaborative Filtering Algorithm 
+
+I first approached this with a standard matrix decomposition using single value decomposition, but this was not effective for a large sparse dataset, and took an extremely long time to compute. I found "implicit" was a better library to use as it was built specifically for large sparse matrices, with much faster runtime. I stored my user- item matrix as a csr matrix which is a sparse matrix which can be operated on, and used implicit to train an alternating least squares model on it. Training this model took about 30 seconds each time which would be unreasonable to do every time the program is ran. To overcome this, i modularised my program to have a "train model" file, and the trained model is stored using the pickle library, which means it can be reused without training it each time the program is running. Using the trained model i can now query any user within the dataset, and recommend multiple songs to them based on the implicit values (0-1 with higher values meaning a better match for the user).
+
+I now have a working recommendation using collaborative filtering, but it only works for users already within the dataset. The problem now is recommending to a user not yet in the dataset, as there is no existing listening data to work off. This is known as a 'cold start problem'. In our programs case, new users are likely to have existing listening data, which means we can add their data to our listening data matrix, and retrain the model to include their listening data. However a user with no past listening data will render collaborative filtering essentially useless, and we must rely on other techniques such as content-based filtering, or simply recommending based on popularity. More complicated recommendation systems will look at more peripheral information about the user, such as location or demographic in order to try find a recommendation with similar groups of users. Others will use a hybrid filtering approach which utilises collaborative and content-based filtering which our group is doing, by developing collaborative filtering and content based filtering separately and working them together into one system.
